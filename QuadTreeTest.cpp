@@ -1,6 +1,7 @@
 ﻿#include "QuadTree.h"
 #include "Common.h"
 #include <ctime>
+#include <cmath>
 #include "CMakeIn.h"
 
 using namespace hw6;

@@ -19,6 +19,8 @@ include_directories("${THIRD_PARTY_DIR}/freeglut/include")
 
 add_subdirectory("${THIRD_PARTY_DIR}/shapeLib")
 
+find_package(OpenGL REQUIRED)
+
 set(TARGET_NAME "hw6_lib")
 add_library(
 	${TARGET_NAME}
@@ -42,4 +44,6 @@ target_link_libraries(
 	${TARGET_NAME}
 	PRIVATE "shape_lib"
 	PRIVATE "hw6_lib"
+	PRIVATE OpenGL::GL
+	PRIVATE OpenGL::GLU
 )

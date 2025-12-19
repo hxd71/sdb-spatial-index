@@ -1,6 +1,7 @@
 #include "Common.h"
 #include "RTree.h"
 #include <ctime>
+#include <cmath>
 #include "CMakeIn.h"
 
 using namespace hw6;
