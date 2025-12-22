@@ -1,0 +1,138 @@
+{
+	"configurations" : 
+	[
+		{
+			"directories" : 
+			[
+				{
+					"build" : ".",
+					"childIndexes" : 
+					[
+						1,
+						2
+					],
+					"hasInstallRule" : true,
+					"jsonFile" : "directory-.-Debug-d0094a50bb2071803777.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.16"
+					},
+					"projectIndex" : 0,
+					"source" : ".",
+					"targetIndexes" : 
+					[
+						1,
+						2
+					]
+				},
+				{
+					"build" : "3rd/freeglut",
+					"hasInstallRule" : true,
+					"jsonFile" : "directory-3rd.freeglut-Debug-f2a80bcf1fbc4717fbde.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.0.0"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 1,
+					"source" : "3rd/freeglut",
+					"targetIndexes" : 
+					[
+						0
+					]
+				},
+				{
+					"build" : "3rd/shapelib",
+					"jsonFile" : "directory-3rd.shapelib-Debug-c8ea09144fba1dad92d5.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.16"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 0,
+					"source" : "3rd/shapelib",
+					"targetIndexes" : 
+					[
+						3
+					]
+				}
+			],
+			"name" : "Debug",
+			"projects" : 
+			[
+				{
+					"childIndexes" : 
+					[
+						1
+					],
+					"directoryIndexes" : 
+					[
+						0,
+						2
+					],
+					"name" : "hw6 project",
+					"targetIndexes" : 
+					[
+						1,
+						2,
+						3
+					]
+				},
+				{
+					"directoryIndexes" : 
+					[
+						1
+					],
+					"name" : "freeglut",
+					"parentIndex" : 0,
+					"targetIndexes" : 
+					[
+						0
+					]
+				}
+			],
+			"targets" : 
+			[
+				{
+					"directoryIndex" : 1,
+					"id" : "freeglut_static::@692421d71f306a907f89",
+					"jsonFile" : "target-freeglut_static-Debug-fb42592841a2b338d1f0.json",
+					"name" : "freeglut_static",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "hw6_app::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-hw6_app-Debug-63dd7fe89e45328bfef9.json",
+					"name" : "hw6_app",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "hw6_lib::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-hw6_lib-Debug-cc6b21ef06c6dbec3505.json",
+					"name" : "hw6_lib",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 2,
+					"id" : "shape_lib::@23a71218d581bd3088b0",
+					"jsonFile" : "target-shape_lib-Debug-e89714f2d90a41e06bef.json",
+					"name" : "shape_lib",
+					"projectIndex" : 0
+				}
+			]
+		}
+	],
+	"kind" : "codemodel",
+	"paths" : 
+	{
+		"build" : "F:/Visualstudio/Git/out/build/x64-Debug",
+		"source" : "F:/Visualstudio/Git"
+	},
+	"version" : 
+	{
+		"major" : 2,
+		"minor" : 8
+	}
+}
