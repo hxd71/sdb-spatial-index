@@ -1,6 +1,7 @@
 ﻿#ifndef TREE_H_INCLUDED
 #define TREE_H_INCLUDED
 #include <string>
+#include <cmath>
 #include "Geometry.h"
 
 namespace hw6 {
