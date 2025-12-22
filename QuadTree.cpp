@@ -7,51 +7,13 @@ namespace hw6 {
 	 * QuadNode
 	 */
 	void QuadNode::split(size_t capacity) {
-		// 1. 清理旧子节点
 		for (int i = 0; i < 4; ++i) {
 			delete children[i];
 			children[i] = nullptr;
 		}
 
-		// 2. 计算四个子节点的包围盒
-		double minX = bbox.getMinX();
-		double minY = bbox.getMinY();
-		double maxX = bbox.getMaxX();
-		double maxY = bbox.getMaxY();
-		double midX = (minX + maxX) / 2.0;
-		double midY = (minY + maxY) / 2.0;
-
-		Envelope boxes[4] = {
-			Envelope(minX, midX, minY, midY), // 左下
-			Envelope(midX, maxX, minY, midY), // 右下
-			Envelope(minX, midX, midY, maxY), // 左上
-			Envelope(midX, maxX, midY, maxY)  // 右上
-		};
-
-		// 3. 创建子节点
-		for (int i = 0; i < 4; ++i) {
-			children[i] = new QuadNode(boxes[i]);
-		}
-
-		// 4. 将特征分配到所有重叠的子节点
-		for (const auto& feature : features) {
-			const Envelope& fbox = feature.getEnvelope();
-			for (int i = 0; i < 4; ++i) {
-				if (boxes[i].intersect(fbox)) {
-					children[i]->add(feature);
-				}
-			}
-		}
-
-		// 5. 清空当前节点的特征
-		features.clear();
-
-		// 6. 对子节点递归分裂
-		for (int i = 0; i < 4; ++i) {
-			if (children[i]->getFeatureNum() > capacity) {
-				children[i]->split(capacity);
-			}
-		}
+		// Task construction
+		// TODO
 	}
 
 	void QuadNode::countNode(int& interiorNum, int& leafNum) {
