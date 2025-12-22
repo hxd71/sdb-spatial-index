@@ -1,2 +1,5 @@
-/build/
+.vs/
+out/
+build/
 CMakeIn.h
+CMakeSettings.json
