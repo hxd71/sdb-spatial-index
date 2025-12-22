@@ -1,4 +1,4 @@
-﻿#include "Geometry.h"
+#include "Geometry.h"
 #include <cmath>
 #include <gl/freeglut.h>
 
@@ -14,21 +14,24 @@ namespace hw6 {
 	}
 
 	bool Envelope::contain(const Envelope& envelope) const {
-		// Task 测试Envelope是否包含关系
-		// TODO
-		return false;
+		// Task 测试Envelope是否包含或相等关系
+		return minX <= envelope.minX && maxX >= envelope.maxX &&
+			minY <= envelope.minY && maxY >= envelope.maxY;
 	}
 
 	bool Envelope::intersect(const Envelope& envelope) const {
 		// Task 测试Envelope是否相交
-		// TODO
-		return false;
+		return !(maxX < envelope.minX || minX > envelope.maxX
+			|| minY > envelope.maxY || maxY < envelope.minY);
 	}
 
 	Envelope Envelope::unionEnvelope(const Envelope& envelope) const {
 		// Task 合并两个Envelope生成一个新的Envelope
-		// TODO
-		return Envelope();
+		double newminX = std::min(this->minX, envelope.minX);
+		double newmaxX = std::max(this->maxX, envelope.maxX);
+		double newminY = std::min(this->minY, envelope.minY);
+		double newmaxY = std::max(this->maxY, envelope.maxY);
+		return Envelope(newminX,newmaxX,newminY,newmaxY);
 	}
 
 	void Envelope::draw() const {
@@ -61,7 +64,17 @@ namespace hw6 {
 			double y2 = line->getPointN(i + 1).getY();
 			// Task calculate the distance between Point P(x, y) and Line [P1(x1,
 			// y1), P2(x2, y2)] (less than 10 lines)
-			// TODO
+			double dx = x2 - x1;
+			double dy = y2 - y1;
+			double len2 = dx * dx + dy * dy;
+			double t = 0;
+			if (len2 > 0) {
+				t = ((x - x1) * dx + (y - y1) * dy) / len2;
+				t = std::max(0.0, std::min(1.0, t));
+			}
+			double projX = x1 + t * dx;
+			double projY = y1 + t * dy;
+			dist = sqrt((x - projX) * (x - projX) + (y - projY) * (y - projY));
 
 			if (dist < mindist)
 				mindist = dist;
@@ -75,7 +88,19 @@ namespace hw6 {
 
 		bool inPolygon = false;
 		// Task whether Point P(x, y) is within Polygon (less than 15 lines)
-		// TODO
+		int cnt = 0;
+		for (size_t i = 0,j = n - 1; i < n; j = i++) {
+			double xi = line.getPointN(i).getX();
+			double yi = line.getPointN(i).getY();
+			double xj = line.getPointN(j).getX();
+			double yj = line.getPointN(j).getY();
+			if (((yi > y) != (yj > y)) &&
+				(x < (xj - xi) * (y - yi) / (yj - yi) + xi))
+				cnt++;
+		}
+
+		if(cnt % 2 == 1)
+			inPolygon = true;
 
 		double mindist = 0;
 		if (!inPolygon)
@@ -111,13 +136,43 @@ namespace hw6 {
 	}
 
 	double LineString::distance(const LineString* line) const {
-		// TODO
-		return NOT_IMPLEMENT;
+		double minDist = this->getPointN(0).distance(&line->getPointN(0));
+		size_t n1 = this->numPoints();
+		size_t n2 = line->numPoints();
+		if (n1 < 2 || n2 < 2)
+			return NOT_IMPLEMENT;
+		for (size_t i = 0; i < n1 - 1; ++i) {
+			const Point& p1 = this->getPointN(i);
+			const Point& p2 = this->getPointN(i + 1);
+			for (size_t j = 0; j < n2 - 1; ++j) {
+				const Point& q1 = line->getPointN(j);
+				const Point& q2 = line->getPointN(j + 1);
+				// calculate the distance between Line [P1(x1, y1), P2(x2, y2)]
+				double d1 = p1.distance(&q1);
+				double d2 = p1.distance(&q2);
+				double d3 = p2.distance(&q1);
+				double d4 = p2.distance(&q2);
+				double d5 = p1.distance(new LineString(std::vector<Point>{q1, q2}));
+				double d6 = p2.distance(new LineString(std::vector<Point>{q1, q2}));
+				double d7 = q1.distance(new LineString(std::vector<Point>{p1, p2}));
+				double d8 = q2.distance(new LineString(std::vector<Point>{p1, p2}));
+				double dist = std::min({ d1, d2, d3, d4, d5, d6, d7, d8 });
+				if (dist < minDist)
+					minDist = dist;
+			}
+		}
+		return minDist;
 	}
 
 	double LineString::distance(const Polygon* polygon) const {
-		// TODO
-		return NOT_IMPLEMENT;
+		// 1. 取Polygon的外环
+		LineString exterior = polygon->getExteriorRing();
+		// 2. 计算本LineString到外环的距离
+		double dist1 = this->distance(&exterior);
+		// 3. 计算外环到本LineString的距离
+		double dist2 = exterior.distance(this);
+		// 4. 返回较小值
+		return std::min(dist1, dist2);
 	}
 
 	typedef int OutCode;
