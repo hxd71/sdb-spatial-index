@@ -5,6 +5,165 @@
 #define NOT_IMPLEMENT -1.0
 
 namespace hw6 {
+namespace {
+	// 叉乘：(B-A) x (C-A)
+	double cross(double ax, double ay, double bx, double by, double cx, double cy) {
+		return (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+	}
+
+	// 判断点 P 是否在线段 AB 上（含端点）
+	bool onSegment(double ax, double ay, double bx, double by, double px, double py) {
+		if (cross(ax, ay, bx, by, px, py) != 0.0) return false;
+
+		double minx = std::min(ax, bx), maxx = std::max(ax, bx);
+		double miny = std::min(ay, by), maxy = std::max(ay, by);
+
+		return (px >= minx && px <= maxx && py >= miny && py <= maxy);
+	}
+
+	// 线段 AB 与线段 CD 是否相交（含共线重叠/端点相触）
+	bool segmentsIntersect(double ax, double ay, double bx, double by,
+						double cx, double cy, double dx, double dy) {
+		double c1 = cross(ax, ay, bx, by, cx, cy);
+		double c2 = cross(ax, ay, bx, by, dx, dy);
+		double c3 = cross(cx, cy, dx, dy, ax, ay);
+		double c4 = cross(cx, cy, dx, dy, bx, by);
+
+		// 严格相交（两边异号）
+		if ((c1 > 0 && c2 < 0 || c1 < 0 && c2 > 0) &&
+			(c3 > 0 && c4 < 0 || c3 < 0 && c4 > 0)) {
+			return true;
+		}
+
+		// 处理共线/端点落在线段上
+		if (c1 == 0.0 && onSegment(ax, ay, bx, by, cx, cy)) return true;
+		if (c2 == 0.0 && onSegment(ax, ay, bx, by, dx, dy)) return true;
+		if (c3 == 0.0 && onSegment(cx, cy, dx, dy, ax, ay)) return true;
+		if (c4 == 0.0 && onSegment(cx, cy, dx, dy, bx, by)) return true;
+
+		return false;
+	}
+
+	// 点到线段距离（投影到线段并截断）
+	double pointSegmentDistance(double px, double py,
+								double ax, double ay,
+								double bx, double by) {
+		double vx = bx - ax, vy = by - ay;
+		double wx = px - ax, wy = py - ay;
+		double len2 = vx * vx + vy * vy;
+
+		// 退化线段：A==B
+		if (len2 == 0.0) {
+			double dx = px - ax, dy = py - ay;
+			return std::sqrt(dx * dx + dy * dy);
+		}
+
+		double t = (wx * vx + wy * vy) / len2;
+		if (t < 0.0) t = 0.0;
+		if (t > 1.0) t = 1.0;
+
+		double projx = ax + t * vx;
+		double projy = ay + t * vy;
+
+		double dx = px - projx, dy = py - projy;
+		return std::sqrt(dx * dx + dy * dy);
+	}
+
+	// 线段到线段距离：若相交则为 0，否则为端点到对方线段的最小值
+	double segmentSegmentDistance(double ax, double ay, double bx, double by,
+								double cx, double cy, double dx, double dy) {
+		if (segmentsIntersect(ax, ay, bx, by, cx, cy, dx, dy)) return 0.0;
+
+		double d1 = pointSegmentDistance(ax, ay, cx, cy, dx, dy);
+		double d2 = pointSegmentDistance(bx, by, cx, cy, dx, dy);
+		double d3 = pointSegmentDistance(cx, cy, ax, ay, bx, by);
+		double d4 = pointSegmentDistance(dx, dy, ax, ay, bx, by);
+
+		return std::min(std::min(d1, d2), std::min(d3, d4));
+	}
+
+	// 环（折线）边界到环边界的最短距离（按边枚举）
+	double ringToRingBoundaryDistance(const LineString& r1, const LineString& r2) {
+		size_t n1 = r1.numPoints();
+		size_t n2 = r2.numPoints();
+		if (n1 < 2 || n2 < 2) return NOT_IMPLEMENT;
+
+		double best = std::numeric_limits<double>::infinity();
+
+		auto edgePoint = [](const LineString& r, size_t idx) -> Point {
+			return r.getPointN(idx);
+		};
+
+		for (size_t i = 0; i < n1; ++i) {
+			size_t i2 = (i + 1) % n1;
+			Point a = edgePoint(r1, i);
+			Point b = edgePoint(r1, i2);
+
+			double ax = a.getX(), ay = a.getY();
+			double bx = b.getX(), by = b.getY();
+
+			for (size_t j = 0; j < n2; ++j) {
+				size_t j2 = (j + 1) % n2;
+				Point c = edgePoint(r2, j);
+				Point d = edgePoint(r2, j2);
+
+				double cx = c.getX(), cy = c.getY();
+				double dx = d.getX(), dy = d.getY();
+
+				double dist = segmentSegmentDistance(ax, ay, bx, by, cx, cy, dx, dy);
+				if (dist < best) best = dist;
+				if (best == 0.0) return 0.0;
+			}
+		}
+		return best;
+	}
+
+	// 点是否在环内（含边界），射线法 + 边界判定
+	bool pointInRingInclusive(const LineString& ring, double px, double py) {
+		size_t n = ring.numPoints();
+		if (n < 2) return false;
+
+		// 1) 边界：在任意边上
+		for (size_t i = 0; i < n; ++i) {
+			size_t j = (i + 1) % n;
+			double ax = ring.getPointN(i).getX();
+			double ay = ring.getPointN(i).getY();
+			double bx = ring.getPointN(j).getX();
+			double by = ring.getPointN(j).getY();
+			if (onSegment(ax, ay, bx, by, px, py)) return true;
+		}
+
+		// 2) 射线法：奇偶规则
+		bool inside = false;
+		for (size_t i = 0, j = n - 1; i < n; j = i++) {
+			double xi = ring.getPointN(i).getX();
+			double yi = ring.getPointN(i).getY();
+			double xj = ring.getPointN(j).getX();
+			double yj = ring.getPointN(j).getY();
+
+			bool cond = ((yi > py) != (yj > py));
+			if (cond) {
+				double xInt = (xj - xi) * (py - yi) / (yj - yi) + xi;
+				if (px < xInt) inside = !inside;
+			}
+		}
+		return inside;
+	}
+
+	// 点是否在多边形实体内（含外边界，排除孔洞，孔洞边界也视为“不在实体内”）
+	bool pointInPolygonSolidInclusive(const Polygon* poly, double px, double py) {
+		LineString exterior = poly->getExteriorRing();
+		if (!pointInRingInclusive(exterior, px, py)) return false;
+
+		// 在孔洞内部或孔洞边界上：不属于实体
+		for (size_t k = 0; k < poly->numInteriorRings(); ++k) {
+			LineString hole = poly->getInteriorRingN(k);
+			if (pointInRingInclusive(hole, px, py)) return false;
+		}
+		return true;
+	}
+
+} // anonymous namespace
 
 	/*
 	 * Envelope functions
@@ -55,57 +214,36 @@ namespace hw6 {
 	}
 
 	double Point::distance(const LineString* line) const {
-		double mindist = line->getPointN(0).distance(this);
-		for (size_t i = 0; i < line->numPoints() - 1; ++i) {
-			double dist = 0;
+		// 点到折线距离：取点到每一条线段的最小值
+		double best = line->getPointN(0).distance(this);
+		for (size_t i = 0; i + 1 < line->numPoints(); ++i) {
 			double x1 = line->getPointN(i).getX();
 			double y1 = line->getPointN(i).getY();
 			double x2 = line->getPointN(i + 1).getX();
 			double y2 = line->getPointN(i + 1).getY();
-			// Task calculate the distance between Point P(x, y) and Line [P1(x1,
-			// y1), P2(x2, y2)] (less than 10 lines)
-			double dx = x2 - x1;
-			double dy = y2 - y1;
-			double len2 = dx * dx + dy * dy;
-			double t = 0;
-			if (len2 > 0) {
-				t = ((x - x1) * dx + (y - y1) * dy) / len2;
-				t = std::max(0.0, std::min(1.0, t));
-			}
-			double projX = x1 + t * dx;
-			double projY = y1 + t * dy;
-			dist = sqrt((x - projX) * (x - projX) + (y - projY) * (y - projY));
-
-			if (dist < mindist)
-				mindist = dist;
+			double d = pointSegmentDistance(x, y, x1, y1, x2, y2);
+			if (d < best) best = d;
 		}
-		return mindist;
+		return best;
 	}
 
 	double Point::distance(const Polygon* polygon) const {
-		LineString line = polygon->getExteriorRing();
-		size_t n = line.numPoints();
+		// 点到多边形距离：
+		// 1) 若点在实体内（含外边界），且不在孔洞内/孔洞边界上，则距离为 0
+		// 2) 若点在孔洞内（含孔洞边界），返回点到该孔洞边界的距离
+		// 3) 否则返回点到外环边界的距离
+		if (pointInPolygonSolidInclusive(polygon, x, y)) return 0.0;
 
-		bool inPolygon = false;
-		// Task whether Point P(x, y) is within Polygon (less than 15 lines)
-		int cnt = 0;
-		for (size_t i = 0,j = n - 1; i < n; j = i++) {
-			double xi = line.getPointN(i).getX();
-			double yi = line.getPointN(i).getY();
-			double xj = line.getPointN(j).getX();
-			double yj = line.getPointN(j).getY();
-			if (((yi > y) != (yj > y)) &&
-				(x < (xj - xi) * (y - yi) / (yj - yi) + xi))
-				cnt++;
+		// 若点落在某个孔洞内部/边界上：返回点到孔洞边界距离
+		for (size_t k = 0; k < polygon->numInteriorRings(); ++k) {
+			LineString hole = polygon->getInteriorRingN(k);
+			if (pointInRingInclusive(hole, x, y)) {
+				return this->distance(&hole);
+			}
 		}
 
-		if(cnt % 2 == 1)
-			inPolygon = true;
-
-		double mindist = 0;
-		if (!inPolygon)
-			mindist = this->distance(&line);
-		return mindist;
+		LineString exterior = polygon->getExteriorRing();
+		return this->distance(&exterior);
 	}
 
 	bool Point::intersects(const Envelope& rect) const {
@@ -136,43 +274,87 @@ namespace hw6 {
 	}
 
 	double LineString::distance(const LineString* line) const {
-		double minDist = this->getPointN(0).distance(&line->getPointN(0));
+		// 折线到折线距离：枚举两条折线的所有线段，取线段到线段距离最小值
 		size_t n1 = this->numPoints();
 		size_t n2 = line->numPoints();
-		if (n1 < 2 || n2 < 2)
-			return NOT_IMPLEMENT;
-		for (size_t i = 0; i < n1 - 1; ++i) {
-			const Point& p1 = this->getPointN(i);
-			const Point& p2 = this->getPointN(i + 1);
-			for (size_t j = 0; j < n2 - 1; ++j) {
-				const Point& q1 = line->getPointN(j);
-				const Point& q2 = line->getPointN(j + 1);
-				// calculate the distance between Line [P1(x1, y1), P2(x2, y2)]
-				double d1 = p1.distance(&q1);
-				double d2 = p1.distance(&q2);
-				double d3 = p2.distance(&q1);
-				double d4 = p2.distance(&q2);
-				double d5 = p1.distance(new LineString(std::vector<Point>{q1, q2}));
-				double d6 = p2.distance(new LineString(std::vector<Point>{q1, q2}));
-				double d7 = q1.distance(new LineString(std::vector<Point>{p1, p2}));
-				double d8 = q2.distance(new LineString(std::vector<Point>{p1, p2}));
-				double dist = std::min({ d1, d2, d3, d4, d5, d6, d7, d8 });
-				if (dist < minDist)
-					minDist = dist;
+		if (n1 < 2 || n2 < 2) return NOT_IMPLEMENT;
+
+		double best = std::numeric_limits<double>::infinity();
+
+		for (size_t i = 0; i + 1 < n1; ++i) {
+			double ax = this->getPointN(i).getX();
+			double ay = this->getPointN(i).getY();
+			double bx = this->getPointN(i + 1).getX();
+			double by = this->getPointN(i + 1).getY();
+
+			for (size_t j = 0; j + 1 < n2; ++j) {
+				double cx = line->getPointN(j).getX();
+				double cy = line->getPointN(j).getY();
+				double dx = line->getPointN(j + 1).getX();
+				double dy = line->getPointN(j + 1).getY();
+
+				double d = segmentSegmentDistance(ax, ay, bx, by, cx, cy, dx, dy);
+				if (d < best) best = d;
+				if (best == 0.0) return 0.0;
 			}
 		}
-		return minDist;
+		return best;
 	}
 
 	double LineString::distance(const Polygon* polygon) const {
-		// 1. 取Polygon的外环
+		// 折线到多边形距离：
+		// 1) 若折线任意顶点在多边形实体内（含外边界）-> 距离 0
+		// 2) 若折线任意线段与多边形边界（外环/孔洞环）相交/相触 -> 距离 0
+		// 3) 否则取折线到所有环边界的最小距离
+		if (polygon == nullptr) return NOT_IMPLEMENT;
+		if (this->numPoints() < 2) return NOT_IMPLEMENT;
+
+		// 1) 顶点落在实体内
+		for (size_t i = 0; i < this->numPoints(); ++i) {
+			Point p = this->getPointN(i);
+			if (pointInPolygonSolidInclusive(polygon, p.getX(), p.getY())) return 0.0;
+		}
+
+		// 2) 检查与外环/孔洞环边界相交
+		auto polyBoundaryHit = [&](const LineString& ring) -> bool {
+			size_t rn = ring.numPoints();
+			if (rn < 2) return false;
+
+			for (size_t i = 0; i + 1 < this->numPoints(); ++i) {
+				double ax = this->getPointN(i).getX();
+				double ay = this->getPointN(i).getY();
+				double bx = this->getPointN(i + 1).getX();
+				double by = this->getPointN(i + 1).getY();
+
+				for (size_t k = 0; k < rn; ++k) {
+					size_t k2 = (k + 1) % rn;
+					double cx = ring.getPointN(k).getX();
+					double cy = ring.getPointN(k).getY();
+					double dx = ring.getPointN(k2).getX();
+					double dy = ring.getPointN(k2).getY();
+
+					if (segmentsIntersect(ax, ay, bx, by, cx, cy, dx, dy)) return true;
+				}
+			}
+			return false;
+		};
+
 		LineString exterior = polygon->getExteriorRing();
-		// 2. 计算本LineString到外环的距离
-		double dist1 = this->distance(&exterior);
-		// 3. 计算外环到本LineString的距离
-		double dist2 = exterior.distance(this);
-		// 4. 返回较小值
-		return std::min(dist1, dist2);
+		if (polyBoundaryHit(exterior)) return 0.0;
+
+		for (size_t h = 0; h < polygon->numInteriorRings(); ++h) {
+			LineString hole = polygon->getInteriorRingN(h);
+			if (polyBoundaryHit(hole)) return 0.0;
+		}
+
+		// 3) 计算到所有环边界的最小距离
+		double best = ringToRingBoundaryDistance(*this, exterior);
+		for (size_t h = 0; h < polygon->numInteriorRings(); ++h) {
+			LineString hole = polygon->getInteriorRingN(h);
+			double d = ringToRingBoundaryDistance(*this, hole);
+			if (d < best) best = d;
+		}
+		return best;
 	}
 
 	typedef int OutCode;
@@ -324,24 +506,117 @@ namespace hw6 {
 	 * Polygon
 	 */
 	double Polygon::distance(const Polygon* polygon) const {
-		return std::min(exteriorRing.distance(polygon),
-			polygon->getExteriorRing().distance(this));
+		// 多边形到多边形距离：
+		// 1) 若任意边界相交/相触 -> 距离 0
+		// 2) 若一个多边形实体包含另一个多边形的顶点 -> 距离 0
+		// 3) 否则返回所有边界环之间的最短距离
+		if (polygon == nullptr) return NOT_IMPLEMENT;
+
+		// 1) 边界相交：外环/孔洞环两两检查
+		std::vector<LineString> ringsA;
+		ringsA.push_back(this->exteriorRing);
+		for (size_t i = 0; i < this->numInteriorRings(); ++i) {
+			ringsA.push_back(this->getInteriorRingN(i));
+		}
+
+		std::vector<LineString> ringsB;
+		ringsB.push_back(polygon->getExteriorRing());
+		for (size_t i = 0; i < polygon->numInteriorRings(); ++i) {
+			ringsB.push_back(polygon->getInteriorRingN(i));
+		}
+
+		for (size_t i = 0; i < ringsA.size(); ++i) {
+			for (size_t j = 0; j < ringsB.size(); ++j) {
+				if (ringToRingBoundaryDistance(ringsA[i], ringsB[j]) == 0.0) return 0.0;
+			}
+		}
+
+		// 2) 实体包含：检查 A 外环顶点是否落入 B 实体，或 B 外环顶点是否落入 A 实体
+		for (size_t i = 0; i < this->exteriorRing.numPoints(); ++i) {
+			Point v = this->exteriorRing.getPointN(i);
+			if (pointInPolygonSolidInclusive(polygon, v.getX(), v.getY())) return 0.0;
+		}
+
+		LineString eB = polygon->getExteriorRing();
+		for (size_t i = 0; i < eB.numPoints(); ++i) {
+			Point v = eB.getPointN(i);
+			if (pointInPolygonSolidInclusive(this, v.getX(), v.getY())) return 0.0;
+		}
+
+		// 3) 不相交：计算边界环最短距离
+		double best = std::numeric_limits<double>::infinity();
+		for (size_t i = 0; i < ringsA.size(); ++i) {
+			for (size_t j = 0; j < ringsB.size(); ++j) {
+				double d = ringToRingBoundaryDistance(ringsA[i], ringsB[j]);
+				if (d < best) best = d;
+			}
+		}
+		return best;
 	}
 
 	bool Polygon::intersects(const Envelope& rect) const {
-		// TODO
-		return true;
+		// 多边形与包围盒是否相交：
+		// 1) 先用包围盒快速排除
+		// 2) 多边形任一环边界与矩形相交 -> true
+		// 3) 矩形任一角点在多边形实体内 -> true
+		// 4) 多边形外环任一点在矩形内 -> true
+		if (!envelope.intersect(rect)) return false;
+
+		// 2) 任一环边界与矩形相交
+		if (exteriorRing.intersects(rect)) return true;
+		for (size_t h = 0; h < interiorRings.size(); ++h) {
+			if (interiorRings[h].intersects(rect)) return true;
+		}
+
+		// 3) 矩形角点是否在多边形实体内
+		double minX = rect.getMinX(), maxX = rect.getMaxX();
+		double minY = rect.getMinY(), maxY = rect.getMaxY();
+
+		const Point corners[4] = {
+			Point(minX, minY),
+			Point(maxX, minY),
+			Point(maxX, maxY),
+			Point(minX, maxY)
+		};
+
+		for (int i = 0; i < 4; ++i) {
+			double px = corners[i].getX();
+			double py = corners[i].getY();
+			if (pointInPolygonSolidInclusive(this, px, py)) return true;
+		}
+
+		// 4) 多边形外环顶点是否落在矩形内
+		for (size_t i = 0; i < exteriorRing.numPoints(); ++i) {
+			if (exteriorRing.getPointN(i).intersects(rect)) return true;
+		}
+
+		return false;
 	}
 
-	void Polygon::draw() const { exteriorRing.draw(); }
+	void Polygon::draw() const {
+		exteriorRing.draw();
+		for (size_t i = 0; i < interiorRings.size(); ++i) {
+			interiorRings[i].draw();
+		}
+	}
 
 	void Polygon::print() const {
-		std::cout << "Polygon(";
+		std::cout << "POLYGON((";
 		for (size_t i = 0; i < exteriorRing.numPoints(); ++i) {
-			if (i != 0)
-				std::cout << ", ";
+			if (i != 0) std::cout << ", ";
 			Point p = exteriorRing.getPointN(i);
 			std::cout << p.getX() << " " << p.getY();
+		}
+		std::cout << ")";
+
+		for (size_t k = 0; k < interiorRings.size(); ++k) {
+			std::cout << ", (";
+			for (size_t i = 0; i < interiorRings[k].numPoints(); ++i) {
+				if (i != 0) std::cout << ", ";
+				Point p = interiorRings[k].getPointN(i);
+				std::cout << p.getX() << " " << p.getY();
+			}
+			std::cout << ")";
 		}
 		std::cout << ")";
 	}

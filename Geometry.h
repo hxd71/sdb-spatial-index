@@ -37,7 +37,7 @@ namespace hw6 {
 		void draw() const;
 
 		void print() const {
-			std::cout << "Envelope( " << minX << " " << maxX << " " << minY << " "
+			std::cout << "Envelope(" << minX << " " << maxX << " " << minY << " "
 				<< maxY << ") ";
 		}
 
@@ -141,13 +141,18 @@ namespace hw6 {
 	class Polygon : public Geometry {
 	private:
 		LineString exteriorRing;
+		std::vector<LineString> interiorRings;
 
 	public:
 		Polygon() {}
 		Polygon(LineString& ering) : exteriorRing(ering) { constructEnvelope(); }
+		Polygon(LineString& ering, std::vector<LineString>& irings) 
+			: exteriorRing(ering), interiorRings(irings) { constructEnvelope(); }
 		virtual ~Polygon() {}
 
 		LineString getExteriorRing() const { return exteriorRing; }
+		size_t numInteriorRings() const { return interiorRings.size(); }
+		LineString getInteriorRingN(size_t n) const { return interiorRings[n]; }
 
 		virtual void constructEnvelope() { envelope = exteriorRing.getEnvelope(); }
 
