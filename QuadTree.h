@@ -1,4 +1,4 @@
-﻿#ifndef QUADTREE_H_INCLUDED
+#ifndef QUADTREE_H_INCLUDED
 #define QUADTREE_H_INCLUDED
 
 #include "Geometry.h"
@@ -100,7 +100,7 @@ namespace hw6 {
 
 		static void analyse();
 
-
+		void kNNQuery(double x, double y, int k, std::vector<Feature>& result);
 	};
 
 } // namespace hw6
