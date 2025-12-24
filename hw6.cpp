@@ -1,4 +1,4 @@
-﻿// hw6.cpp : 定义控制台应用程序的入口点。
+// hw6.cpp : 定义控制台应用程序的入口点。
 //
 
 #include "Common.h"
@@ -35,26 +35,41 @@ double pointSize = 2.0;
 
 int mode;
 
-vector<hw6::Feature> features;
-vector<hw6::Feature> roads;
-bool showRoad = true;
+// 数据容器
+vector<hw6::Feature> features; // 点数据
+vector<hw6::Feature> roads;    // 线数据
+vector<hw6::Feature> polygons; // 新增：多边形数据
 
-unique_ptr<hw6::Tree> pointTree;
-unique_ptr<hw6::Tree> roadTree;
+bool showRoad = true;
+bool showPolygon = true;       // 新增：多边形显示开关
 bool showTree = false;
 
-hw6::Feature nearestFeature;
+// 索引树
+unique_ptr<hw6::Tree> pointTree;
+unique_ptr<hw6::Tree> roadTree;
+unique_ptr<hw6::Tree> polygonTree; // 新增：多边形索引
 
+// 交互与查询结果
+hw6::Feature nearestFeature;
 bool firstPoint = true;
 hw6::Point corner[2];
 hw6::Envelope selectedRect;
 vector<hw6::Feature> selectedFeatures;
+
+int kValue = 5; // k-NN 的 k 值
 
 /*
  * shapefile文件中name和geometry属性读取
  */
 vector<string> readName(const char* filename) {
 	DBFHandle file = DBFOpen(filename, "r");
+
+	// --- 修复开始：增加空指针检查 ---
+	if (file == NULL) {
+		cout << "Error: Failed to open DBF file: " << filename << ".dbf" << endl;
+		return vector<string>(); // 返回空向量，避免崩溃
+	}
+	// --- 修复结束 ---
 
 	vector<string> res;
 	int cct = DBFGetRecordCount(file);
@@ -71,6 +86,13 @@ vector<string> readName(const char* filename) {
 
 vector<hw6::Geometry*> readGeom(const char* filename) {
 	SHPHandle file = SHPOpen(filename, "r");
+
+	// --- 修复开始：增加空指针检查 ---
+	if (file == NULL) {
+		cout << "Error: Failed to open SHP file: " << filename << ".shp" << endl;
+		return vector<hw6::Geometry*>(); // 返回空向量
+	}
+	// --- 修复结束 ---
 
 	int pnEntities, pnShapeType;
 	double padfMinBound[4], padfMaxBound[4];
@@ -178,6 +200,39 @@ void deleteGeom(vector<hw6::Geometry*>& geom) {
 	geom.clear();
 }
 
+// --- 新增：加载多边形数据 ---
+void loadPolygonData() {
+	// 1. 读取几何数据 (.shp)
+	// 只要 polygon.shp 存在，readGeom 就能正常工作
+	vector<hw6::Geometry*> geom = readGeom(PROJ_SRC_DIR "/data/polygon");
+
+	// 2. 注释掉 readName
+	// 因为 data/polygon.dbf 不存在，调用此函数会导致崩溃或返回空
+	// vector<string> name = readName(PROJ_SRC_DIR "/data/polygon"); 
+
+	polygons.clear();
+
+	if (geom.empty()) {
+		cout << "Warning: No polygon geometry found." << endl;
+		return;
+	}
+
+	// 3. 构建 Feature，使用默认名称
+	for (size_t i = 0; i < geom.size(); ++i) {
+		// 由于没有 .dbf 文件提供真实名称，我们使用索引生成默认名称
+		string defaultName = "Polygon_" + to_string(i);
+
+		polygons.push_back(hw6::Feature(defaultName, geom[i]));
+	}
+
+	cout << "polygon number: " << geom.size() << endl;
+
+	// 4. 构建多边形四叉树索引
+	if (polygonTree) polygonTree.reset();
+	polygonTree = make_unique<TreeTy>(10); // 设置容量
+	polygonTree->constructTree(polygons);
+}
+
 /*
  * 读取纽约道路数据
  */
@@ -228,57 +283,69 @@ void loadTaxiData() {
 /*
  * 区域查询
  */
+ // --- 修改：区域查询 ---
 void rangeQuery() {
 	vector<hw6::Feature> candidateFeatures;
 
-	// filter step (使用四叉树获得查询区域和几何特征包围盒相交的候选集）
 	if (mode == RANGEPOINT)
 		pointTree->rangeQuery(selectedRect, candidateFeatures);
 	else if (mode == RANGELINE)
 		roadTree->rangeQuery(selectedRect, candidateFeatures);
+	else if (mode == RANGEPOLYGON) // 处理多边形
+		polygonTree->rangeQuery(selectedRect, candidateFeatures);
 
-	// refine step (精确判断时，需要去重，避免查询区域和几何对象的重复计算)
 	selectedFeatures.clear();
 	for (const auto& feature : candidateFeatures) {
+		// 利用 Geometry 多态调用 intersects
 		if (feature.getGeom()->intersects(selectedRect)) {
 			selectedFeatures.push_back(feature);
 		}
 	}
 }
 
-/*
- * 邻近查询
- */
+// --- 修改：邻近查询 ---
 void NNQuery(hw6::Point p) {
 	vector<hw6::Feature> candidateFeatures;
+	hw6::Tree* currentTree = nullptr;
 
-	// filter step (使用四叉树获得距离较近的几何特征候选集)
-	if (mode == NNPOINT)
-		pointTree->NNQuery(p.getX(), p.getY(), candidateFeatures);
-	else if (mode == NNLINE)
-		roadTree->NNQuery(p.getX(), p.getY(), candidateFeatures);
+	if (mode == NNPOINT) currentTree = pointTree.get();
+	else if (mode == NNLINE) currentTree = roadTree.get();
+	else if (mode == NNPOLYGON) currentTree = polygonTree.get(); // 处理多边形
 
-	// refine step (精确计算查询点与几何对象的距离)
+	if (!currentTree) return;
+
+	currentTree->NNQuery(p.getX(), p.getY(), candidateFeatures);
+
 	double minDist = std::numeric_limits<double>::max();
 	nearestFeature = hw6::Feature();
+
 	for (const auto& feature : candidateFeatures) {
-		double dist = 0.0;
-		const hw6::Geometry* geom = feature.getGeom();
-		if (mode == NNPOINT) {
-			const hw6::Point* pt = dynamic_cast<const hw6::Point*>(geom);
-			if (pt) {
-				dist = p.distance(pt);
-			}
-		} else if (mode == NNLINE) {
-			const hw6::LineString* line = dynamic_cast<const hw6::LineString*>(geom);
-			if (line) {
-				dist = p.distance(line);
-			}
-		}
+		// 利用 Geometry 多态调用 distance
+		double dist = p.distance(feature.getGeom());
 		if (dist < minDist) {
 			minDist = dist;
 			nearestFeature = feature;
 		}
+	}
+}
+
+// --- 新增：k-NN 查询 ---
+void KNNQuery(hw6::Point p) {
+	// 这里演示对 点数据 (Stations) 进行 k-NN
+	// 如果想对多边形 k-NN，只需把 tree 指针换成 polygonTree.get()
+
+	// 需要将基类 Tree 指针转换为 QuadTree (TreeTy) 指针才能调用 kNNQuery
+	TreeTy* qTree = dynamic_cast<TreeTy*>(pointTree.get());
+
+	if (qTree) {
+		selectedFeatures.clear(); // 复用 selectedFeatures 存储结果
+		qTree->kNNQuery(p.getX(), p.getY(), kValue, selectedFeatures);
+
+		// 控制台输出结果调试
+		// cout << "k-NN Results (k=" << kValue << "):" << endl;
+		// for(const auto& f : selectedFeatures) {
+		//    cout << " - " << f.getName() << endl;
+		// }
 	}
 }
 
@@ -304,66 +371,87 @@ void transfromPt(hw6::Point& pt) {
  * 绘制代码
  */
 void display() {
-	// glClearColor(241 / 255.0, 238 / 255.0, 232 / 255.0, 0.0);
-	// 设置背景颜色
 	glClearColor(1.0, 1.0, 1.0, 0.0);
 	glClear(GL_COLOR_BUFFER_BIT);
-
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
 
-	const hw6::Envelope bbox = pointTree->getEnvelope();
-	glOrtho(bbox.getMinX() - 0.001, bbox.getMaxX() + 0.001,
-		bbox.getMinY() - 0.001, bbox.getMaxY() + 0.001,
-		-1.0, 1.0);
+	// ... (设置视口 glOrtho 代码保持不变) ...
+	// 确定视口范围
+	const hw6::Envelope* bbox = nullptr;
+	if (pointTree && pointTree->getEnvelope().getWidth() > 0) bbox = &pointTree->getEnvelope();
+	else if (polygonTree && polygonTree->getEnvelope().getWidth() > 0) bbox = &polygonTree->getEnvelope();
 
-	// 道路绘制
+	if (bbox) {
+		glOrtho(bbox->getMinX(), bbox->getMaxX(), bbox->getMinY(), bbox->getMaxY(), -1.0, 1.0);
+	}
+	else {
+		glOrtho(-74.05, -73.90, 40.70, 40.85, -1.0, 1.0); // 默认纽约范围
+	}
+
+	// 绘制多边形
+	if (showPolygon) {
+		glColor3d(0.8, 0.8, 0.8); // 灰色填充
+		for (const auto& poly : polygons) poly.draw();
+	}
+
+	// 绘制道路
 	if (showRoad) {
 		glColor3d(252 / 255.0, 214 / 255.0, 164 / 255.0);
-		//glColor3d(0.6, 0.3, 0.0); // 棕色
-		for (size_t i = 0; i < roads.size(); ++i)
-			roads[i].draw();
+		for (const auto& road : roads) road.draw();
 	}
 
-	// 点绘制
-	if (!(mode == RANGELINE || mode == NNLINE)) {
+	// 绘制点
+	if (!(mode == RANGELINE || mode == NNLINE || mode == RANGEPOLYGON || mode == NNPOLYGON)) {
 		glPointSize((float)pointSize);
 		glColor3d(0.0, 146 / 255.0, 247 / 255.0);
-		for (size_t i = 0; i < features.size(); ++i)
-			features[i].draw();
+		for (const auto& feat : features) feat.draw();
 	}
 
-	// 四叉树绘制
+	// --- 插入开始：四叉树绘制逻辑 ---
 	if (showTree) {
-		glColor3d(0.0, 146 / 255.0, 247 / 255.0);
-		if (mode == RANGELINE || mode == NNLINE)
-			roadTree->draw();
-		else
-			pointTree->draw();
+		glLineWidth(1.0);
+		glColor3d(0.0, 0.6, 0.0); // 使用绿色或深蓝色绘制树的边界
+
+		// 根据当前模式决定画哪棵树
+		if (mode == RANGELINE || mode == NNLINE) {
+			if (roadTree) roadTree->draw();
+		}
+		else if (mode == RANGEPOLYGON || mode == NNPOLYGON) {
+			if (polygonTree) polygonTree->draw();
+		}
+		else {
+			// 默认模式、点模式、KNN模式都画点树
+			if (pointTree) pointTree->draw();
+		}
+	}
+	// --- 插入结束 ---
+
+	// 绘制高亮选区或结果 (Range 或 k-NN)
+	if (mode == RANGEPOINT || mode == RANGELINE || mode == RANGEPOLYGON || mode == KNN) {
+		// ... (保持不变) ...
+		if (mode != KNN) {
+			glColor3d(0.0, 0.0, 0.0);
+			selectedRect.draw();
+		}
+		// ...
+		glColor3d(1.0, 0.0, 0.0);
+		glLineWidth(2.0);
+		if (mode == KNN) glPointSize(6.0);
+		for (const auto& f : selectedFeatures) f.draw();
+		glLineWidth(1.0);
+		glPointSize((float)pointSize);
 	}
 
-	// 离鼠标最近点绘制
-	if (mode == NNPOINT) {
-		glPointSize(5.0);
-		glColor3d(0.9, 0.0, 0.0);
-		nearestFeature.draw();
-	}
-
-	// 离鼠标最近道路绘制
-	if (mode == NNLINE) {
-		glLineWidth(3.0);
+	// 绘制最近邻 (NN)
+	if (mode == NNPOINT || mode == NNLINE || mode == NNPOLYGON) {
+		// ... (保持不变) ...
+		if (mode == NNPOINT) glPointSize(6.0);
+		else glLineWidth(3.0);
 		glColor3d(0.9, 0.0, 0.0);
 		nearestFeature.draw();
 		glLineWidth(1.0);
-	}
-
-	// 区域选择绘制
-	if (mode == RANGEPOINT || mode == RANGELINE) {
-		glColor3d(0.0, 0.0, 0.0);
-		selectedRect.draw();
-		glColor3d(1.0, 0.0, 0.0);
-		for (size_t i = 0; i < selectedFeatures.size(); ++i)
-			selectedFeatures[i].draw();
+		glPointSize((float)pointSize);
 	}
 
 	glFlush();
@@ -375,7 +463,7 @@ void display() {
  */
 void mouse(int button, int state, int x, int y) {
 	if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN) {
-		if (mode == RANGEPOINT || mode == RANGELINE) {
+		if (mode == RANGEPOINT || mode == RANGELINE || mode == RANGEPOLYGON) {
 			if (firstPoint) {
 				selectedFeatures.clear();
 				corner[0] = hw6::Point(x, screenHeight - y);
@@ -384,11 +472,11 @@ void mouse(int button, int state, int x, int y) {
 			else {
 				corner[1] = hw6::Point(x, screenHeight - y);
 				transfromPt(corner[1]);
-				selectedRect =
-					hw6::Envelope(min(corner[0].getX(), corner[1].getX()),
-						max(corner[0].getX(), corner[1].getX()),
-						min(corner[0].getY(), corner[1].getY()),
-						max(corner[0].getY(), corner[1].getY()));
+				selectedRect = hw6::Envelope(
+					min(corner[0].getX(), corner[1].getX()),
+					max(corner[0].getX(), corner[1].getX()),
+					min(corner[0].getY(), corner[1].getY()),
+					max(corner[0].getY(), corner[1].getY()));
 				rangeQuery();
 			}
 			firstPoint = !firstPoint;
@@ -398,27 +486,34 @@ void mouse(int button, int state, int x, int y) {
 }
 
 void passiveMotion(int x, int y) {
-	corner[1] = hw6::Point(x, screenHeight - y);
+	hw6::Point p(x, screenHeight - y);
 
-	if ((mode == RANGEPOINT || mode == RANGELINE) && !firstPoint) {
-		corner[1] = hw6::Point(x, screenHeight - y);
+	// Range Query 预览
+	if ((mode == RANGEPOINT || mode == RANGELINE || mode == RANGEPOLYGON) && !firstPoint) {
+		corner[1] = p;
 		transfromPt(corner[1]);
-		selectedRect = hw6::Envelope(min(corner[0].getX(), corner[1].getX()),
+		selectedRect = hw6::Envelope(
+			min(corner[0].getX(), corner[1].getX()),
 			max(corner[0].getX(), corner[1].getX()),
 			min(corner[0].getY(), corner[1].getY()),
 			max(corner[0].getY(), corner[1].getY()));
 		rangeQuery();
-
 		glutPostRedisplay();
 	}
-	else if (mode == NNPOINT || mode == NNLINE) {
-		hw6::Point p(x, screenHeight - y);
+	// NN Query 实时
+	else if (mode == NNPOINT || mode == NNLINE || mode == NNPOLYGON) {
 		transfromPt(p);
 		NNQuery(p);
-
+		glutPostRedisplay();
+	}
+	// k-NN Query 实时
+	else if (mode == KNN) {
+		transfromPt(p);
+		KNNQuery(p);
 		glutPostRedisplay();
 	}
 }
+
 
 void changeSize(int w, int h) {
 	screenWidth = w;
@@ -445,6 +540,27 @@ void processNormalKeys(unsigned char key, int x, int y) {
 	case 's':
 		mode = RANGEPOINT;
 		firstPoint = true;
+		break;
+	// Polygon Modes (新增按键 P/p)
+	case 'p': mode = RANGEPOLYGON; firstPoint = true; cout << "Mode: Polygon Range" << endl; break;
+	case 'P': mode = NNPOLYGON; cout << "Mode: Polygon NN" << endl; break;
+	// k-NN Mode (新增按键 K/k)
+	case 'k':
+	case 'K':
+		mode = KNN;
+		cout << "Mode: k-NN (k=" << kValue << ")" << endl;
+		break;
+
+	// k 值调整
+	case ']':
+		kValue++;
+		cout << "k increased to " << kValue << endl;
+		if (mode == KNN) passiveMotion(x, y); // 刷新视图
+		break;
+	case '[':
+		if (kValue > 1) kValue--;
+		cout << "k decreased to " << kValue << endl;
+		if (mode == KNN) passiveMotion(x, y); // 刷新视图
 		break;
 	case 'B':
 	case 'b':
@@ -493,6 +609,10 @@ int main(int argc, char* argv[]) {
 		<< "  s  : range search for stations\n"
 		<< "  N  : nearest road search\n"
 		<< "  n  : nearest station search\n"
+		<< "  P/p: Polygon data (RANGE/NN)\n"
+		<< "  K/k: k-NN search for stations\n"
+		<< "     ]: increase k\n"
+		<< "     [: decrease k\n"
 		<< "  B/b: Bicycle data\n"
 		<< "  T/t: Taxi data\n"
 		<< "  R/r: show Road\n"
@@ -510,10 +630,13 @@ int main(int argc, char* argv[]) {
 
 	pointTree = make_unique<TreeTy>();
 	roadTree = make_unique<TreeTy>();
+	polygonTree = make_unique<TreeTy>();
 
 	loadRoadData();
 
 	loadStationData();
+
+	loadPolygonData(); // 新增：加载多边形数据
 
 	glutInit(&argc, argv);
 	glutInitWindowSize(screenWidth, screenHeight);
