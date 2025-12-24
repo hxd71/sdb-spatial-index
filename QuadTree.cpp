@@ -2,6 +2,8 @@
 #include <set>
 #include <utility> 
 
+#include <queue> 
+
 namespace hw6 {
 
 	/*
@@ -269,5 +271,110 @@ namespace hw6 {
 				}
 			}
 		}
+
+		// 辅助结构：用于搜索队列，存储节点及其到查询点的最小距离
+		struct SearchEntry {
+			double minDist;
+			QuadNode* node;
+
+			// 优先队列默认是最大堆，为了实现最小堆（Min-Heap），需要反转比较逻辑
+			bool operator>(const SearchEntry& other) const {
+				return minDist > other.minDist;
+			}
+		};
+
+		// 辅助结构：用于结果队列，存储特征及其确切距离
+		struct ResultEntry {
+			double dist;
+			Feature feature;
+
+			// 结果队列需要是最大堆（Max-Heap），用于快速获取第 k 个最近邻（即当前结果中最远的）
+			bool operator<(const ResultEntry& other) const {
+				return dist < other.dist;
+			}
+		};
+
+		void QuadTree::kNNQuery(double x, double y, int k, std::vector<Feature>& result) {
+			result.clear();
+			if (!root || k <= 0) return;
+
+			// 1. 搜索队列 (Min-Heap): 存储待访问的节点，按到 (x,y) 的最小距离排序
+			std::priority_queue<SearchEntry, std::vector<SearchEntry>, std::greater<SearchEntry>> searchQueue;
+
+			// 2. 结果队列 (Max-Heap): 存储当前找到的最近的 k 个特征
+			std::priority_queue<ResultEntry> resultQueue;
+
+			// 初始将根节点加入搜索队列
+			// 注意：maxDistance2Envelope 是点到矩形的最短距离
+			// 这里我们需要计算点 (x,y) 到 root envelope 的最小欧几里得距离。
+			// 由于 Feature 没有直接提供 point2EnvelopeMinDist，我们在这里手动计算或复用现有逻辑。
+			// 假设 feature.maxDistance2Envelope 计算的是 max dist，我们需要 min dist。
+			// 为了简化，我们直接在 SearchEntry 中计算距离。
+
+			// 简易 lambda 计算点到 Envelope 的最小平方距离 (用于比较)
+			auto calcMinDist = [](double px, double py, const Envelope& env) -> double {
+				double dx = 0.0, dy = 0.0;
+				if (px < env.getMinX()) dx = env.getMinX() - px;
+				else if (px > env.getMaxX()) dx = px - env.getMaxX();
+
+				if (py < env.getMinY()) dy = env.getMinY() - py;
+				else if (py > env.getMaxY()) dy = py - env.getMaxY();
+
+				return sqrt(dx * dx + dy * dy);
+				};
+
+			searchQueue.push({ calcMinDist(x, y, root->getEnvelope()), root });
+
+			Point queryPt(x, y); // 用于计算精确距离
+
+			while (!searchQueue.empty()) {
+				SearchEntry current = searchQueue.top();
+				searchQueue.pop();
+
+				// 剪枝 (Pruning):
+				// 如果当前节点的最短距离 已经大于 已找到的第 k 个最近邻的距离，
+				// 那么这个节点下的所有特征都不可能是 k-NN，直接放弃。
+				if (resultQueue.size() == k && current.minDist > resultQueue.top().dist) {
+					continue; // 甚至可以 break，因为 SearchEntry 是有序的，后面的肯定更远
+				}
+
+				if (current.node->isLeafNode()) {
+					// 处理叶节点中的特征
+					for (const auto& feat : current.node->getFeatures()) {
+						// 计算精确几何距离
+						double d = queryPt.distance(feat.getGeom());
+
+						if (resultQueue.size() < k) {
+							resultQueue.push({ d, feat });
+						}
+						else if (d < resultQueue.top().dist) {
+							resultQueue.pop();
+							resultQueue.push({ d, feat });
+						}
+					}
+				}
+				else {
+					// 处理内部节点：将子节点加入搜索队列
+					for (int i = 0; i < 4; ++i) {
+						QuadNode* child = current.node->getChildNode(i);
+						if (child) {
+							double d = calcMinDist(x, y, child->getEnvelope());
+							// 优化：入队前的剪枝
+							if (resultQueue.size() < k || d < resultQueue.top().dist) {
+								searchQueue.push({ d, child });
+							}
+						}
+					}
+				}
+			}
+
+			// 将结果从优先队列转入 vector (注意：堆弹出的顺序是从大到小，我们需要反转)
+			while (!resultQueue.empty()) {
+				result.push_back(resultQueue.top().feature);
+				resultQueue.pop();
+			}
+			std::reverse(result.begin(), result.end()); // 现在是从小到大
+		}
+
 
 } // namespace hw6
