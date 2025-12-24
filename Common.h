@@ -1,4 +1,4 @@
-﻿#ifndef COMMON_H_INCLUDED
+#ifndef COMMON_H_INCLUDED
 #define COMMON_H_INCLUDED
 
 #define Default 0
@@ -8,6 +8,11 @@
 #define NNLINE 4
 #define QUADTREE 5
 #define RTREE 6
+
+// --- 新增定义 ---
+#define RANGEPOLYGON 7  // 多边形区域查询
+#define NNPOLYGON 8     // 多边形最近邻查询
+#define KNN 9           // k-最近邻查询
 
 #define TEST1 1
 #define TEST2 2
