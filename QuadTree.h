@@ -56,6 +56,11 @@ namespace hw6 {
 		void rangeQuery(const Envelope& rect, std::vector<Feature>& features);
 
 		QuadNode* pointInLeafNode(double x, double y);
+
+
+	public:
+		// 新增公有方法用于访问features
+		const std::vector<Feature>& getFeatures() const { return features; }
 	};
 
 	class QuadTree : public Tree {
@@ -87,10 +92,15 @@ namespace hw6 {
 
 		virtual void draw() override;
 
+		// Spatial Join 接口
+		void spatialJoin(const std::vector<Feature>& queryFeatures, double distanceThreshold, std::vector<std::pair<Feature, Feature>>& result);
+
 	public:
 		static void test(int t);
 
 		static void analyse();
+
+
 	};
 
 } // namespace hw6

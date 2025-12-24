@@ -238,7 +238,12 @@ void rangeQuery() {
 		roadTree->rangeQuery(selectedRect, candidateFeatures);
 
 	// refine step (精确判断时，需要去重，避免查询区域和几何对象的重复计算)
-	// TODO
+	selectedFeatures.clear();
+	for (const auto& feature : candidateFeatures) {
+		if (feature.getGeom()->intersects(selectedRect)) {
+			selectedFeatures.push_back(feature);
+		}
+	}
 }
 
 /*
@@ -254,7 +259,27 @@ void NNQuery(hw6::Point p) {
 		roadTree->NNQuery(p.getX(), p.getY(), candidateFeatures);
 
 	// refine step (精确计算查询点与几何对象的距离)
-	// TODO
+	double minDist = std::numeric_limits<double>::max();
+	nearestFeature = hw6::Feature();
+	for (const auto& feature : candidateFeatures) {
+		double dist = 0.0;
+		const hw6::Geometry* geom = feature.getGeom();
+		if (mode == NNPOINT) {
+			const hw6::Point* pt = dynamic_cast<const hw6::Point*>(geom);
+			if (pt) {
+				dist = p.distance(pt);
+			}
+		} else if (mode == NNLINE) {
+			const hw6::LineString* line = dynamic_cast<const hw6::LineString*>(geom);
+			if (line) {
+				dist = p.distance(line);
+			}
+		}
+		if (dist < minDist) {
+			minDist = dist;
+			nearestFeature = feature;
+		}
+	}
 }
 
 /*

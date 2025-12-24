@@ -1,4 +1,4 @@
-# Geometry.cpp 代码完善与原理说明
+# Geometry.cpp 
 
 ## 1. Envelope 部分
 ### contain(const Envelope& envelope)
@@ -39,16 +39,27 @@
 - 原理：分别计算折线到多边形外环的距离和外环到折线的距离，取较小值。
 - 这样可以兼容两者互为内外的情况。
 
-## 4. 代码补充说明
-- 所有 distance 相关函数均采用欧氏距离。
-- 射线法判断点在多边形内外。
-- 折线与多边形距离采用对称最小距离法，保证鲁棒性。
-- Envelope 的交并等操作均为区间比较。
+## QuadTree.cpp
 
-## 5. 主要逻辑流程
-- 点到线/多边形距离：遍历+投影+最小值。
-- 线到线/多边形距离：双重遍历+端点/线段距离。
-- 多边形到多边形距离：外环互算距离。
+```cpp
+void QuadNode::split(size_t capacity);
+bool QuadTree::constructTree(const std::vector<Feature> &features);
+
+void QuadNode::rangeQuery(const Envelope &rect, std::vector<Feature> &features);
+void QuadTree::rangeQuery(const Envelope &rect, std::vector<Feature> &features);
+bool QuadTree::NNQuery(double x, double y, std::vector<Feature> &features);
+QuadNode *QuadNode::pointInLeafNode(double x, double y);
+
+// Spatial Join 接口
+void spatialJoin(const std::vector<Feature>& queryFeatures, double distanceThreshold, std::vector<std::pair<Feature, Feature>>& result);
+```
+
+## hw6.cpp
+
+```cpp
+void rangeQuery(); //精准判断去重
+void NNQuery(hw6::Point p);  //精准判断去重
+```
 
 ---
 

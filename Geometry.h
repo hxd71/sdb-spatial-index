@@ -92,6 +92,10 @@ namespace hw6 {
 
 		virtual void constructEnvelope() { envelope = Envelope(x, x, y, y); }
 
+		virtual double distance(const Geometry* geom) const override {
+			return geom->distance(this);
+		}
+
 		// Euclidean distance
 		virtual double distance(const Point* point) const;
 		virtual double distance(const LineString* line) const;
@@ -123,6 +127,10 @@ namespace hw6 {
 
 		virtual void constructEnvelope();
 
+		virtual double distance(const Geometry* geom) const override {
+			return geom->distance(this);
+		}
+
 		// Euclidean distance
 		virtual double distance(const Point* point) const {
 			return point->distance(this);
@@ -150,6 +158,10 @@ namespace hw6 {
 		LineString getExteriorRing() const { return exteriorRing; }
 
 		virtual void constructEnvelope() { envelope = exteriorRing.getEnvelope(); }
+
+		virtual double distance(const Geometry* geom) const override {
+			return geom->distance(this);
+		}
 
 		// Euclidean distance
 		virtual double distance(const Point* point) const {
