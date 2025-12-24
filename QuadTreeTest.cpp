@@ -290,6 +290,84 @@ namespace hw6 {
 			cout << "QuadTree Construction: " << cct << " / " << ncase
 				<< " tests are passed" << endl;
 		}
+
+		else if (t == TEST5) {
+			cout << "测试5: Spatial Join (Nested Loop with Index)" << endl;
+
+			// 1. Prepare Data
+			// Create Stations (Points) and build the Tree
+			vector<Feature> stations;
+			// A: (2,2) -> Distance to Line(y=2) is 0
+			stations.push_back(Feature("Station A", new Point(2.0, 2.0)));
+			// B: (2,3) -> Distance to Line(y=2) is 1.0
+			stations.push_back(Feature("Station B", new Point(2.0, 3.0)));
+			// C: (2,3.1) -> Distance to Line(y=2) is 1.1
+			stations.push_back(Feature("Station C", new Point(2.0, 3.1)));
+			// D: (10,10) -> Far away
+			stations.push_back(Feature("Station D", new Point(10.0, 10.0)));
+
+			QuadTree stationTree(2); // Small capacity to force splits
+			stationTree.constructTree(stations);
+
+			// Create Roads (LineStrings) as query features
+			vector<Point> linePts;
+			linePts.push_back(Point(0.0, 2.0));
+			linePts.push_back(Point(10.0, 2.0));
+			LineString* lineGeom = new LineString(linePts);
+			vector<Feature> roads;
+			roads.push_back(Feature("Road 1", lineGeom));
+
+			// 2. Perform Spatial Join
+			// Find stations within 1.0 unit of the road
+			double threshold = 1.0;
+			vector<pair<Feature, Feature>> results;
+
+			// This call will crash if Geometry.h is not fixed!
+			stationTree.spatialJoin(roads, threshold, results);
+
+			// 3. Verify Results
+			// Expected matches: Station A (0.0 <= 1.0) and Station B (1.0 <= 1.0)
+			// Station C (1.1 > 1.0) should be excluded.
+			int expectedCount = 2;
+			int failedCount = 0;
+
+			if (results.size() != expectedCount) {
+				cout << "Count Error: Expected " << expectedCount << " pairs, found " << results.size() << endl;
+				failedCount++;
+			}
+			else {
+				bool foundA = false;
+				bool foundB = false;
+				for (const auto& pair : results) {
+					string sName = pair.second.getName();
+					double dist = pair.first.getGeom()->distance(pair.second.getGeom());
+					cout << "Match: " << pair.first.getName() << " - " << sName << " (Dist: " << dist << ")" << endl;
+
+					if (sName == "Station A") foundA = true;
+					if (sName == "Station B") foundB = true;
+					if (dist > threshold + 1e-9) { // tolerance for float comparison
+						cout << "Distance Error: Pair distance " << dist << " > threshold " << threshold << endl;
+						failedCount++;
+					}
+				}
+				if (!foundA || !foundB) {
+					cout << "Content Error: Missing Station A or B" << endl;
+					failedCount++;
+				}
+			}
+
+			// Cleanup manual geometry
+			for (auto& f : stations) delete f.getGeom();
+			for (auto& f : roads) delete f.getGeom();
+
+			if (failedCount == 0) {
+				cout << "Spatial Join: PASSED" << endl;
+			}
+			else {
+				cout << "Spatial Join: FAILED" << endl;
+			}
+		}
+
 		else if (t == TEST8) {
 			cout << "测试8: QuadTreeAnalysis" << endl;
 			analyse();
