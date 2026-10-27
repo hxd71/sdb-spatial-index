@@ -1,133 +1,134 @@
-# 如何运行作业
+# SDB Spatial Index
 
-- 安装[CMake](https://cmake.org/download/)，版本大于等于3.16
-  - 如果使用的 IDE 为 Visual Studio，也可用内置的 CMake
-- 对于使用 VS Code 的同学，需要安装 VS Code 的 CMake 插件，并按网上教程配置环境变量、C/C++编译器等
-- 直接用 IDE 打开此文件夹，一般会自动加载项目
-  - 使用 Visual Studio 的同学，注意在 `项目 / hw6 project的CMake设置` 中点击”编辑JSON“，更改 `generator` 为本机适合的版本（如 "Visual Studio 16 2019 Win64" ），使用默认的 "Ninja" 作为 `generator` 可能有未知问题
-  - 使用 Mac OS 或 Linux 的同学请使用 VS Code 或其他 IDE 打开
-- 无需安装其他依赖，CMake 构建成功后可运行
+一个基于 C++ 的二维空间索引与可视化示例项目。项目围绕点、线、面几何数据，实现空间对象的包围盒管理、空间索引构建以及交互式查询，并使用 OpenGL/FreeGLUT 对查询结果和索引结构进行可视化。
 
-# 需要补全的代码
+## 功能概览
 
-- 标记为 `[[optional]]` 的是附加题扩展要求
+- **几何模型**
+  - `Point`
+  - `LineString`
+  - `Polygon`
+  - `Envelope`（轴对齐包围盒）
+- **几何计算**
+  - 包围盒包含、相交与合并
+  - 点、线、面之间的欧式距离计算
+  - 几何对象与查询矩形的相交判断
+- **空间索引**
+  - 四叉树（`QuadTree`）
+  - R 树（`RTree`）
+  - 区域查询（Range Query）
+  - 最近邻候选查询（Nearest Neighbor）
+  - 四叉树 k 近邻查询（k-NN）
+  - 基于距离阈值的空间连接（Spatial Join）
+- **可视化交互**
+  - 加载纽约地区的自行车站点、出租车点、道路和多边形数据
+  - 鼠标框选区域进行查询
+  - 鼠标移动实时执行最近邻和 k 近邻查询
+  - 显示或隐藏道路、空间索引边界及查询结果
 
-## Geometry.cpp
+> 当前程序首先通过空间索引筛选候选对象，再使用几何对象自身的精确相交或距离计算完成精炼。因此，索引查询结果适合作为候选集，而不是直接替代精确几何判断。
 
-```cpp
-double Point::distance(const LineString *line) const;
-double Point::distance(const Polygon *polygon) const;
+## 项目结构
 
-bool Envelope::contain(const Envelope &envelope) const;
-bool Envelope::intersect(const Envelope &envelope) const;
-Envelope Envelope::unionEnvelope(const Envelope &envelope) const;
-
-// 以下是附加题扩展要求
-[[optional]] 
-自行实现 Polygon 的内环几何数据存储，并修改 Point 到 Polygon 的欧式距离计算
-[[optional]]
-double LineString::distance(const LineString *line) const
-[[optional]]
-double LineString::distance(const Polygon *polygon) const
-[[optional]] 
-添加 MultiPoint、MultiLineString 和 MultiPolygon 类，同时给出正确性的证明
-
-[[optional]]
-bool Polygon::intersects(const Envelope &rect) const
+```text
+.
+├── Geometry.h/.cpp       # 几何类型与几何运算
+├── Tree.h                # Feature 和空间索引基类
+├── QuadTree.h/.cpp       # 四叉树索引
+├── RTree.h/.cpp          # R 树索引
+├── QuadTreeTest.cpp      # 四叉树测试与分析
+├── RTreeTest.cpp         # R 树测试与分析
+├── hw6.cpp               # OpenGL/FreeGLUT 可视化程序与交互入口
+├── data/                 # Shapefile 示例数据
+├── 3rd/freeglut/         # FreeGLUT
+└── 3rd/shapelib/         # Shapefile 读取支持
 ```
 
-## QuadTree.cpp
+## 构建环境
 
-```cpp
-void QuadNode::split(size_t capacity);
-bool QuadTree::constructTree(const std::vector<Feature> &features);
+- CMake 3.16 或更高版本
+- 支持 C++17 的编译器
+- OpenGL 和 GLU
+- Linux/macOS 通常还需要系统提供 X11 相关开发库；Windows 可使用 Visual Studio 的 OpenGL 环境
 
-void QuadNode::rangeQuery(const Envelope &rect, std::vector<Feature> &features);
-void QuadTree::rangeQuery(const Envelope &rect, std::vector<Feature> &features);
-bool QuadTree::NNQuery(double x, double y, std::vector<Feature> &features);
-QuadNode *QuadNode::pointInLeafNode(double x, double y);
-QuadNode *QuadTree::pointInLeafNode(double x, double y);
+项目已在 `3rd/` 中包含 FreeGLUT 和 Shapelib 的源码，普通构建不需要额外下载这两个依赖。OpenGL 本身仍需由系统提供。
 
-自行添加接口，实现 Spatial Join，输出满足空间距离条件的所有几何特征对，同时给出正确性的证明
+## 构建与运行
 
-// 以下是附加题扩展要求
-[[optional]]
-实现多边形数据基于距离的空间关联
-[[optional]]
-mode == Polygon 实现多边形数据的区域查询
-[[optional]]
-mode == Polygon 实现多边形数据的最邻近查询
-[[optional]]
-实现点、线和多边形的k最邻近几何特征查询（k-NN）查询，可以交互调整k的值
+```bash
+cmake -S . -B build
+cmake --build build --config Release
 ```
 
-## QuadTreeTest.cpp
+构建完成后，可执行文件通常位于：
 
-- 用于对 `QuadTree` 进行测试和性能分析
+- Linux/macOS：`build/hw6_app`
+- Visual Studio 多配置生成器：`build/Release/hw6_app.exe`
 
-```cpp
-[[optional]]
-void QuadTree::analyse(); // 用于与R树进行比较，选择此扩展项需要同时实现R树的analyse()
-```
+如果构建目录或生成器的输出路径不同，请以 CMake 实际生成结果为准。
 
-## RTree.cpp
+## 选择索引实现
 
-
-```cpp
-bool hw6::RTree::constructTree(const std::vector<Feature>& features)
-
-void hw6::RNode::rangeQuery(const Envelope & rect, std::vector<Feature>& features);
-bool hw6::RTree::NNQuery(double x, double y, std::vector<Feature>& features)
-RNode* hw6::RNode::pointInLeafNode(double x, double y);
-
-自行添加接口，实现 Spatial Join，输出满足空间距离条件的所有几何特征对，同时给出正确性的证明
-
-// 以下是附加题扩展要求
-[[optional]]
-实现多边形数据基于距离的空间关联
-[[optional]]
-mode == Polygon 实现多边形数据的区域查询
-[[optional]]
-mode == Polygon 实现多边形数据的最邻近查询
-[[optional]]
-实现点、线和多边形的k最邻近几何特征查询（k-NN）查询，可以交互调整k的值
-```
-
-## RTreeTest.cpp
-
-- 用于对 `RTree` 进行测试和性能分析
+默认使用四叉树：
 
 ```cpp
-[[optional]]
-static void hw6::RTree::analyse(); // 用于与四叉树进行比较，选择此扩展项需要同时实现四叉树的analyse()
+// Common.h
+//#define USE_RTREE
 ```
 
-## hw6.cpp
-
+取消注释后将使用 R 树：
 
 ```cpp
-void rangeQuery(); //精准判断去重
-void NNQuery(hw6::Point p);  //精准判断去重
+#define USE_RTREE
 ```
 
-## [[optional]] BPlusTree.cpp
+该宏会影响 `hw6.cpp` 中点、道路和多边形索引树的具体类型。修改后请重新配置或重新构建项目。
 
-- 基于空间填充曲线的B+Tree，代码文件需要自己创建
+## 交互操作
 
-```cpp
-[[optional]]
-均匀划分空间，生成Z-Curve或Hibert-Curve
-[[optional]] //基于Z值或H值构造B+Tree 
-bool hw6::BPlusTree::constructTree(const std::vector<Feature>& features) 
-[[optional]]
-void hw6::BPlusTree::rangeQuery(const Envelope & rect, std::vector<Feature>& features);
-[[optional]]
-bool hw6::BPlusTree::NNQuery(double x, double y, std::vector<Feature>& features)
-[[optional]]
-自行添加接口，实现 Spatial Join，输出满足空间距离条件的所有几何特征对，同时给出正确性的证明        
+程序启动后会打开 OpenGL 窗口，主要快捷键如下：
+
+| 按键 | 操作 |
+| --- | --- |
+| `s` | 点数据区域查询，鼠标拖拽框选矩形 |
+| `S` | 道路数据区域查询，鼠标拖拽框选矩形 |
+| `n` | 点数据最近邻查询，移动鼠标选择查询点 |
+| `N` | 道路数据最近邻查询 |
+| `p` | 多边形区域查询 |
+| `P` | 多边形最近邻查询 |
+| `k` / `K` | 点数据 k-NN 查询 |
+| `]` | 增大 k |
+| `[` | 减小 k |
+| `b` / `B` | 加载自行车站点数据 |
+| `t` / `T` | 加载出租车数据 |
+| `r` / `R` | 显示或隐藏道路 |
+| `q` / `Q` | 显示或隐藏当前空间索引边界 |
+| `+` / `-` | 调整点大小 |
+| `1`–`8` | 运行内置测试或性能分析 |
+| `Esc` | 退出程序 |
+
+## 数据格式
+
+示例数据使用 Shapefile 格式。程序会从 `data/` 目录读取对应的 `.shp` 文件，并在可用时读取 `.dbf` 中的名称属性，例如：
+
+```text
+data/station.shp
+ data/station.dbf
+ data/highway.shp
+ data/polygon.shp
 ```
 
-## 注意
+其中点、道路和多边形数据分别用于构建不同的空间索引。若数据文件缺失，程序会输出错误或警告信息。
 
-- 代码中包含中文注释。所有中文注释都是 GB 编码的，需使用支持 GB 编码的编辑器打开。如果你在 Mac 或 Linux 上运行程序，可能需要先进行转码
-- 运行时使用 四叉树 还是 R树 由有无定义宏 `USE_RTREE` 决定。`USE_RTREE` 位于 `Common.h` 中，默认为使用四叉树
+## 设计说明
+
+查询流程大致分为两步：
+
+1. **索引过滤**：四叉树或 R 树根据对象包围盒快速返回候选集。
+2. **精确精炼**：调用 `Geometry::intersects` 或 `Geometry::distance` 对候选对象进行精确判断，并去除重复结果。
+
+四叉树通过递归划分空间构建层次结构；R 树则以节点包围盒组织空间对象。两种索引都提供统一的 `Tree` 接口，因此可通过 `USE_RTREE` 在不修改上层交互代码的情况下切换实现。
+
+## 许可证与第三方组件
+
+本项目自身未在仓库中声明独立许可证。`3rd/` 目录中的第三方组件保留其各自的许可证和版权声明；使用或分发项目时，请同时遵守对应组件的许可条款。
